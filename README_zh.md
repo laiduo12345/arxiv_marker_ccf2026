@@ -90,8 +90,8 @@ build/arxiv_marker_ccf2026-1.0.0.xpi
 3. 选择生成的 XPI。
 4. 完整退出并重新启动 Zotero。
 
-插件从最新 GitHub Release 读取更新清单。由于本仓库为私有仓库，GitHub 会要求对更新清单和
-XPI 资产进行身份认证；具体边界见下方“私有仓库更新限制”。
+插件从最新 GitHub Release 读取更新清单。更新清单和 XPI 资产均可匿名下载，因此 Zotero 无需
+GitHub 凭据即可检查并安装后续版本。
 
 ## 使用方法
 
@@ -158,12 +158,11 @@ tools/gen-data.mjs                 运行时数据生成器
 - 公共 API 和出版方网站可能改版、限流、阻止自动访问或缺少正式发表信息；证据不足时插件会主动弃权。
 - 源码级检查和可重复打包不能替代真实 Zotero 用户配置中的安装验证。
 
-### 私有仓库更新限制
+### 更新分发
 
-`manifest.json` 和 `update.json` 使用 Zotero 标准更新格式和稳定的 GitHub Release URL。
-GitHub 不允许匿名访问私有仓库的 Release 资产，而 Zotero 更新器不会携带 GitHub 凭据。因此，
-这些链接可用于已登录 GitHub 的访问和手工安装；若要实现无人值守的 Zotero 自动更新，必须把
-同一份 `update.json` 和 XPI 托管到公开 HTTPS 地址。不要在更新地址中嵌入个人访问令牌。
+`manifest.json` 指向 `releases/latest/download/update.json`。更新清单再指向不可变的版本化
+XPI 资产，并包含 SHA-256 校验值和 Zotero 兼容范围。两个地址都是公开 HTTPS 端点，可供 Zotero
+执行无人值守的更新检查。
 
 ## 许可证与来源
 

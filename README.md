@@ -102,9 +102,9 @@ build/arxiv_marker_ccf2026-1.0.0.xpi
 3. Select the generated XPI.
 4. Fully quit and restart Zotero.
 
-The plugin reads its update manifest from the latest GitHub Release. Because this repository is
-private, GitHub requires authentication to access both the manifest and XPI assets; see
-**Private-repository update limitation** below.
+The plugin reads its update manifest from the latest GitHub Release. Both the manifest and XPI
+assets are publicly downloadable, so Zotero can check and install later releases without GitHub
+credentials.
 
 ## Usage
 
@@ -177,14 +177,11 @@ tools/gen-data.mjs                 Runtime data generator
 - Source-level checks and reproducible packaging do not replace an installation test in a real
   Zotero profile.
 
-### Private-repository update limitation
+### Update delivery
 
-`manifest.json` and `update.json` use the standard Zotero update format and stable GitHub
-Release URLs. GitHub does not expose private-repository Release assets anonymously, while the
-Zotero updater does not send GitHub credentials. The links therefore work for authenticated
-GitHub access and manual installation, but unattended Zotero auto-update requires the same
-`update.json` and XPI to be hosted on a public HTTPS endpoint. Never embed a personal access
-token in the manifest or update URL.
+`manifest.json` points to `releases/latest/download/update.json`. The update manifest points to
+the immutable versioned XPI asset and includes its SHA-256 hash and Zotero compatibility range.
+Both URLs are public HTTPS endpoints and are suitable for Zotero's unattended update checks.
 
 ## License and attribution
 

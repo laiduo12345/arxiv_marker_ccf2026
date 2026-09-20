@@ -1,0 +1,99 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      onload="Zotero.ArxivMarkerCCF2026.hooks.onPrefsLoad({ window })">
+  <groupbox>
+    <label value="arxiv_marker_ccf2026" style="font-weight: bold; margin: 8px 0 4px 6px;" />
+
+    <html:div style="padding: 4px 8px;">
+      <!-- English is the default; onPrefsLoad swaps to Chinese on zh locales (by id). -->
+      <description id="zm-s2desc" style="margin: 4px 0;">
+        Semantic Scholar API key (optional) - leave blank to use the free public endpoint.
+        Only needed if you resolve large batches and hit rate limits.
+      </description>
+      <hbox align="center" style="margin: 4px 0 10px 0;">
+        <label id="zm-s2label" value="S2 API key:" style="min-width: 90px;" />
+        <html:input type="password" id="zm-pref-s2key"
+                    style="flex: 1; min-width: 280px; padding: 4px;"
+                    placeholder="(blank = public endpoint)" />
+      </hbox>
+
+      <description id="zm-ocdesc" style="margin: 4px 0;">
+        OpenCitations Meta is used as a DOI fallback. A token is optional; OpenCitations
+        recommends including one when its REST API is used by an application.
+      </description>
+      <hbox align="center" style="margin: 4px 0 10px 0;">
+        <label id="zm-oclabel" value="OpenCitations token:" style="min-width: 130px;" />
+        <html:input type="password" id="zm-pref-octoken"
+                    style="flex: 1; min-width: 280px; padding: 4px;"
+                    placeholder="(blank = public endpoint)" />
+      </hbox>
+
+      <description id="zm-oadesc" style="margin: 4px 0;">
+        OpenAlex integration is optional. Since February 2026, a free API key is required
+        for normal use; leave this blank to skip OpenAlex while keeping all other sources.
+      </description>
+      <hbox align="center" style="margin: 4px 0 12px 0;">
+        <label id="zm-oalabel" value="OpenAlex key:" style="min-width: 130px;" />
+        <html:input type="password" id="zm-pref-oakey"
+                    style="flex: 1; min-width: 280px; padding: 4px;"
+                    placeholder="(free at openalex.org/settings/api)" />
+      </hbox>
+
+      <description id="zm-officialdesc" style="margin: 8px 0 2px 0;">
+        Official conference pages can expose accepted-paper and technical-session records
+        months before DBLP or Semantic Scholar. AAAI search and targeted USENIX program pages are queried directly.
+      </description>
+      <hbox align="center" style="margin: 4px 0 10px 0;">
+        <html:input type="checkbox" id="zm-pref-officialweb" />
+        <label id="zm-official-label" value="Search official conference/program pages" />
+      </hbox>
+
+      <description id="zm-webdesc" style="margin: 8px 0 2px 0;">
+        As a final fallback, exact paper titles may be sent to Brave Search and/or
+        DuckDuckGo HTML/Lite. Destination pages are fetched and locally verified before a
+        venue is proposed. A Brave key is optional.
+      </description>
+      <hbox align="center" style="margin: 4px 0 6px 0;">
+        <label id="zm-bravelabel" value="Brave Search key:" style="min-width: 130px;" />
+        <html:input type="password" id="zm-pref-bravekey"
+                    style="flex: 1; min-width: 280px; padding: 4px;"
+                    placeholder="(optional; DuckDuckGo works without a key)" />
+      </hbox>
+      <hbox align="center" style="margin: 4px 0 2px 0;">
+        <html:input type="checkbox" id="zm-pref-websearch" />
+        <label id="zm-websearch-label" value="Enable broad exact-title web fallback" />
+      </hbox>
+      <hbox align="center" style="margin: 4px 0 10px 20px;">
+        <html:input type="checkbox" id="zm-pref-duckduckgo" />
+        <label id="zm-duckduckgo-label" value="Use key-free DuckDuckGo HTML/Lite fallback" />
+      </hbox>
+
+      <hbox align="center" style="margin: 4px 0 10px 0;">
+        <html:input type="checkbox" id="zm-pref-exhaustive" />
+        <label id="zm-exhaustive-label" value="Deep mode: continue with later sources (90-second item budget)" />
+      </hbox>
+
+      <description style="margin: 8px 0;">单次请求 8 秒；普通模式每篇 45 秒预算，深度模式 90 秒。按站点限速；可在工具菜单停止或清空缓存。</description>
+      <hbox align="center">
+        <label value="并行条目 / Concurrent items (1–6):" />
+        <html:input type="number" id="zm-pref-concurrency" min="1" max="6" value="3" style="width: 60px;" />
+      </hbox>
+      <description id="zm-confdesc" style="margin: 4px 0;">
+        Auto-select items at or above this resolver confidence in the review dialog.
+        Lower-confidence rows are still shown - just left unchecked for you to opt in.
+      </description>
+      <hbox align="center" style="margin: 4px 0;">
+        <label id="zm-conflabel" value="Auto-select min" style="min-width: 90px;" />
+        <menulist id="zm-pref-minconf">
+          <menupopup>
+            <menuitem id="zm-c06" label="0.60  (include unrecognized venue strings)" value="0.6" />
+            <menuitem id="zm-c07" label="0.70" value="0.7" />
+            <menuitem id="zm-c08" label="0.80  (recommended)" value="0.8" />
+            <menuitem id="zm-c085" label="0.85  (single trusted source)" value="0.85" />
+            <menuitem id="zm-c095" label="0.95  (two sources agree)" value="0.95" />
+          </menupopup>
+        </menulist>
+      </hbox>
+    </html:div>
+  </groupbox>
+</vbox>

@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "arxiv_marker_ccf2026@local": {
+      "updates": [
+        {
+          "version": "1.0.0",
+          "update_link": "https://github.com/laiduo12345/arxiv_marker_ccf2026/releases/download/v1.0.0/arxiv_marker_ccf2026-1.0.0.xpi",
+          "update_hash": "sha256:8b41a9de1f82919ce82e2ea359bc7ee05590b447c1ae972287aca59c6597b63c",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "9.0",
+              "strict_max_version": "9.0.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,46 @@
+# CCF 2026 data source and policy
+
+`ccf_2026_quick.md` is a complete compact transcription of the seventh edition (2026) of the
+China Computer Federation recommended international academic journals and conferences
+catalogue.
+
+Validated structure:
+
+```text
+entries:     681
+journals:    295
+conferences: 386
+subject areas: 10
+A entries:    95
+B entries:   245
+C entries:   341
+```
+
+Primary reference:
+
+- China Computer Federation, **第七版中国计算机学会推荐国际学术会议和期刊目录（正式版）**,
+  formally published on 2026-03-31.
+- Official catalogue landing page:
+  `https://www.ccf.org.cn/Academic_Evaluation/By_category/`
+
+Machine-readable transcriptions used to cross-check names, categories, and counts:
+
+- `haozhou-wong/ccf-recommended-list-2026-markdown`
+- `hitfyd/ShowJCR`, file `CCF2026-UTF8.csv`
+
+`ccf_2026_aliases.json` adds maintained metadata variants without changing the A/B/C
+classification. It covers common abbreviations, renamed venues, and selected full titles.
+The generated plugin table also reuses overlapping aliases from `venue_rankings.csv`.
+
+Matching is intentionally conservative:
+
+- short names are exact-normalized rather than substring-matched;
+- full-name containment is allowed only for sufficiently long multi-token aliases;
+- workshops, Findings, tutorials, demos, and companion tracks do not inherit the main venue;
+- conflicting abbreviations such as `FSE` remain unresolved unless another Zotero venue
+  field supplies a disambiguating full name.
+
+The project is not affiliated with or endorsed by CCF. This embedded table is a local lookup
+copy for personal bibliography management. If a transcription differs from the formal CCF
+catalogue, the formal catalogue takes precedence. The repository's MIT license applies to the
+project code; catalogue data remains subject to the rights of its publisher.

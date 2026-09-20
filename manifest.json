@@ -1,0 +1,24 @@
+{
+  "manifest_version": 2,
+  "name": "arxiv_marker_ccf2026",
+  "version": "1.0.0",
+  "description": "Resolve arXiv preprints to verified venues in Zotero 9 and display offline CCF 2026 rankings.",
+  "author": "arxiv_marker_ccf2026 contributors",
+  "homepage_url": "https://github.com/laiduo12345/arxiv_marker_ccf2026",
+  "applications": {
+    "zotero": {
+      "id": "arxiv_marker_ccf2026@local",
+      "update_url": "https://github.com/laiduo12345/arxiv_marker_ccf2026/releases/latest/download/update.json",
+      "strict_min_version": "9.0",
+      "strict_max_version": "9.0.*"
+    }
+  },
+  "browser_specific_settings": {
+    "zotero": {
+      "id": "arxiv_marker_ccf2026@local",
+      "update_url": "https://github.com/laiduo12345/arxiv_marker_ccf2026/releases/latest/download/update.json",
+      "strict_min_version": "9.0",
+      "strict_max_version": "9.0.*"
+    }
+  }
+}

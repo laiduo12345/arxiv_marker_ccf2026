@@ -1,0 +1,615 @@
+// arxiv_marker_ccf2026 — Zotero glue loaded by bootstrap.js.
+// Uses ZMResolver (the ported resolver, shares this scope) + Zotero APIs to: read the
+// selected items, resolve venues against live S2/OpenReview/DBLP, preview in a review dialog, and
+// write the venue field back DIRECTLY to the local library (no Web API, no API key).
+
+if (typeof Zotero === "undefined") {
+  throw new Error("arxiv_marker_ccf2026.js requires the Zotero environment");
+}
+
+const ZH = (Zotero.locale || "").toLowerCase().startsWith("zh");
+const T = {
+  menu: ZH ? "用 arxiv_marker_ccf2026 解析会议/期刊" : "Resolve venue with arxiv_marker_ccf2026",
+  collMenu: ZH ? "用 arxiv_marker_ccf2026 解析此分类" : "Resolve this collection with arxiv_marker_ccf2026",
+  noItems: ZH
+    ? "没找到可处理的条目。选中条目、或右键左侧的某个分类。"
+    : "No items to process. Select items, or right-click a collection.",
+  resolving: ZH ? "arxiv_marker_ccf2026:解析中…" : "arxiv_marker_ccf2026: resolving…",
+  resolvingN: (n) => (ZH ? `arxiv_marker_ccf2026:正在解析 ${n} 个条目…` : `arxiv_marker_ccf2026: resolving ${n} item(s)…`),
+  failed: ZH ? "解析失败(看 Zotero 调试输出)。" : "Resolve failed (see Zotero debug output).",
+  wroteN: (n) =>
+    ZH
+      ? `arxiv_marker_ccf2026:已写入 ${n} 个条目(可用「工具→撤销上次 arxiv_marker_ccf2026 写入」还原)。`
+      : `arxiv_marker_ccf2026: wrote ${n} item(s). Undo via Tools menu.`,
+  wroteNone: ZH ? "arxiv_marker_ccf2026:未写入任何条目。" : "arxiv_marker_ccf2026: nothing written.",
+  undoMenu: ZH ? "撤销上次 arxiv_marker_ccf2026 写入" : "Undo last arxiv_marker_ccf2026 write",
+  noUndo: ZH ? "没有可撤销的写入记录。" : "Nothing to undo.",
+  undoConfirm: (n, when) =>
+    ZH
+      ? `把 ${n} 个条目恢复到写入前(${when})的状态?\n这会还原类型和所有字段。`
+      : `Restore ${n} item(s) to their pre-write state (${when})?\nThis reverts the item type and all fields.`,
+  undoneN: (n) => (ZH ? `arxiv_marker_ccf2026:已恢复 ${n} 个条目。` : `arxiv_marker_ccf2026: restored ${n} item(s).`),
+  prefLabel: "arxiv_marker_ccf2026",
+};
+
+// ----- item -> resolver data dict ---------------------------------------------------
+function collectionPath(collectionID) {
+  const parts = [];
+  let c = Zotero.Collections.get(collectionID);
+  let guard = 0;
+  while (c && guard++ < 20) {
+    parts.unshift(c.name);
+    c = c.parentID ? Zotero.Collections.get(c.parentID) : null;
+  }
+  return parts.join(" / ");
+}
+
+function field(item, name) {
+  try {
+    return item.getField(name) || "";
+  } catch (e) {
+    return ""; // field not valid for this item type
+  }
+}
+
+function itemColumnData(item) {
+  return {
+    itemType: Zotero.ItemTypes.getName(item.itemTypeID),
+    conferenceName: field(item, "conferenceName"),
+    proceedingsTitle: field(item, "proceedingsTitle"),
+    journalAbbreviation: field(item, "journalAbbreviation"),
+    publicationTitle: field(item, "publicationTitle"),
+    publisher: field(item, "publisher"),
+    volume: field(item, "volume"), issue: field(item, "issue"), pages: field(item, "pages"),
+  };
+}
+
+function itemToData(item) {
+  const creators = item.getCreators().map((c) => ({
+    creatorType: Zotero.CreatorTypes.getName(c.creatorTypeID),
+    firstName: c.firstName || "",
+    lastName: c.lastName || "",
+  }));
+  const tags = (item.getTags() || []).map((t) => ({ tag: t.tag }));
+  const collections = (item.getCollections() || []).map((cid) => collectionPath(cid)).filter(Boolean);
+  return {
+    title: field(item, "title"),
+    archiveID: field(item, "archiveID"),
+    DOI: field(item, "DOI"),
+    url: field(item, "url"),
+    extra: field(item, "extra"),
+    date: field(item, "date"),
+    creators,
+    tags,
+    collections,
+    itemType: Zotero.ItemTypes.getName(item.itemTypeID),
+    // existing venue fields — needed so buildProposal's idempotency check can see that an
+    // item is ALREADY resolved (else already-converted items get re-proposed every run).
+    proceedingsTitle: field(item, "proceedingsTitle"),
+    conferenceName: field(item, "conferenceName"),
+    publicationTitle: field(item, "publicationTitle"),
+    journalAbbreviation: field(item, "journalAbbreviation"),
+    ISSN: field(item, "ISSN"),
+    publisher: field(item, "publisher"),
+    volume: field(item, "volume"), issue: field(item, "issue"), pages: field(item, "pages"),
+  };
+}
+
+// ----- HTTP adapter: Zotero.HTTP.request -> {status, data} (never throws on 4xx/5xx) ---
+async function zoteroRequest(method, url, opts = {}) {
+  return ZMHTTP.request(Zotero, method, url, opts);
+}
+
+let zmCachePromise = null;
+function cacheFilePath() { return PathUtils.join(Zotero.DataDirectory.dir, "arxiv_marker_ccf2026-http-cache-v1.json"); }
+async function loadHTTPCache() {
+  if (!zmCachePromise) zmCachePromise = (async () => {
+    let data = null;
+    try { data = JSON.parse(await Zotero.File.getContentsAsync(cacheFilePath())); } catch (_) {}
+    return ZMNetwork.createCache(data);
+  })();
+  return zmCachePromise;
+}
+async function saveHTTPCache(cache) {
+  try { await Zotero.File.putContentsAsync(cacheFilePath(), JSON.stringify(cache.snapshot())); }
+  catch (_) { Zotero.debug("arxiv_marker_ccf2026: HTTP cache could not be saved (lookup results unaffected)"); }
+}
+async function clearHTTPCache() {
+  if (Zotero.ArxivMarkerCCF2026.activeJob) { notify(ZH ? "请先停止当前解析。" : "Stop the current lookup first."); return; }
+  const cache = await loadHTTPCache(); cache.clear(); await saveHTTPCache(cache);
+  notify(ZH ? "已清空 arxiv_marker_ccf2026 查询缓存，不影响文献或附件。" : "Lookup cache cleared; library and attachments unchanged.");
+}
+function cancelResolution() {
+  if (Zotero.ArxivMarkerCCF2026.activeJob) Zotero.ArxivMarkerCCF2026.activeJob.cancelled = true;
+}
+
+// ----- write-back: change item type + set venue fields, save to LOCAL db --------------
+async function applyResolution(item, res) {
+  if (!res.target_item_type || !res.fields) return false;
+  const targetTypeID = Zotero.ItemTypes.getID(res.target_item_type);
+  if (targetTypeID && item.itemTypeID !== targetTypeID) {
+    item.setType(targetTypeID); // Zotero drops fields not valid for the new type
+  }
+  for (const [name, value] of Object.entries(res.fields)) {
+    if (value == null || value === "") continue;
+    if (name === "extra") {
+      item.setField("extra", value);
+      continue;
+    }
+    const fieldID = Zotero.ItemFields.getID(name);
+    if (fieldID && Zotero.ItemFields.isValidForType(fieldID, item.itemTypeID)) {
+      try {
+        item.setField(name, value);
+      } catch (e) {
+        Zotero.debug(`arxiv_marker_ccf2026: could not set ${name}: ${e}`);
+      }
+    }
+  }
+  await item.saveTx();
+  return true;
+}
+
+// ----- undo safety net: snapshot full pre-write state, restore on demand --------------
+function undoFilePath() {
+  return PathUtils.join(Zotero.DataDirectory.dir, "arxiv_marker_ccf2026-undo.json");
+}
+
+// Save the FULL original state (toJSON) of every item about to be written. This is the
+// hard backup: even if the undo command fails, the pre-write state is preserved on disk.
+async function saveUndoSnapshot(items) {
+  if (!items.length) return;
+  const snapshot = {
+    time: new Date().toISOString(),
+    items: items.map((it) => ({ libraryID: it.libraryID, key: it.key, data: it.toJSON() })),
+  };
+  try {
+    await Zotero.File.putContentsAsync(undoFilePath(), JSON.stringify(snapshot));
+  } catch (e) {
+    Zotero.debug("arxiv_marker_ccf2026: could not save undo snapshot: " + e);
+  }
+}
+
+async function undoLast(window) {
+  let snapshot;
+  try {
+    snapshot = JSON.parse(await Zotero.File.getContentsAsync(undoFilePath()));
+  } catch (e) {
+    notify(T.noUndo);
+    return;
+  }
+  if (!snapshot || !snapshot.items || !snapshot.items.length) {
+    notify(T.noUndo);
+    return;
+  }
+  const when = snapshot.time ? snapshot.time.replace("T", " ").slice(0, 19) : "?";
+  if (!Services.prompt.confirm(window, "arxiv_marker_ccf2026", T.undoConfirm(snapshot.items.length, when))) return;
+
+  let restored = 0;
+  for (const rec of snapshot.items) {
+    try {
+      const item = await Zotero.Items.getByLibraryAndKeyAsync(rec.libraryID, rec.key);
+      if (!item) continue;
+      const data = Object.assign({}, rec.data);
+      delete data.version;
+      delete data.dateModified;
+      item.fromJSON(data); // restores itemType + every field to the snapshot
+      await item.saveTx();
+      restored++;
+    } catch (e) {
+      Zotero.debug("arxiv_marker_ccf2026: undo failed for " + rec.key + ": " + e);
+    }
+  }
+  notify(T.undoneN(restored));
+}
+
+// Resolve the target Zotero.Items for a given scope:
+//   "selected"   -> the items highlighted in the item list
+//   "collection" -> every regular item in the collection selected on the left
+//   "auto"       -> selected items if any, else the current collection's items
+// So you can right-click a collection (or just hit the Tools menu with a collection open)
+// without hand-picking each paper.
+function getScopeItems(pane, scope) {
+  if (!pane) return [];
+  const isRegular = (it) => it.isRegularItem && it.isRegularItem();
+  const collItems = () => {
+    const c = pane.getSelectedCollection && pane.getSelectedCollection();
+    return c ? c.getChildItems(false, false).filter(isRegular) : [];
+  };
+  if (scope === "collection") return collItems();
+  const sel = pane.getSelectedItems().filter(isRegular);
+  if (sel.length || scope === "selected") return sel;
+  return collItems(); // "auto" fallback
+}
+
+// ----- main flow --------------------------------------------------------------------
+async function run(window, scope = "auto", runOptions = {}) {
+  if (Zotero.ArxivMarkerCCF2026.activeJob) { notify(ZH ? "正在解析，可在工具菜单停止。" : "A lookup is running. Stop it from Tools."); return; }
+  Zotero.ArxivMarkerCCF2026.activeJob = { cancelled: false };
+  try { await runInner(window, scope, runOptions); }
+  finally { if (Zotero.ArxivMarkerCCF2026) Zotero.ArxivMarkerCCF2026.activeJob = null; }
+}
+async function runInner(window, scope = "auto", runOptions = {}) {
+  const pane = Zotero.getActiveZoteroPane();
+  const selected = getScopeItems(pane, scope);
+  if (!selected.length) {
+    notify(T.noItems);
+    return;
+  }
+
+  const items = selected.map((it) => ({ key: it.key, version: it.version, data: itemToData(it) }));
+  const itemByKey = new Map(selected.map((it) => [it.key, it]));
+
+  const pw = new Zotero.ProgressWindow({ closeOnClick: false });
+  pw.changeHeadline("arxiv_marker_ccf2026");
+  const line = new pw.ItemProgress(null, T.resolvingN(items.length));
+  pw.show();
+
+  let resolutions;
+  const httpCache = await loadHTTPCache();
+  let runStats = {};
+  try {
+    const s2ApiKey = (Zotero.Prefs.get("arxiv_marker_ccf2026.s2ApiKey") || "").trim();
+    const openCitationsToken = (Zotero.Prefs.get("arxiv_marker_ccf2026.openCitationsToken") || "").trim();
+    const openAlexApiKey = (Zotero.Prefs.get("arxiv_marker_ccf2026.openAlexApiKey") || "").trim();
+    const braveSearchApiKey = (Zotero.Prefs.get("arxiv_marker_ccf2026.braveSearchApiKey") || "").trim();
+    const enableOfficialWeb = Zotero.Prefs.get("arxiv_marker_ccf2026.enableOfficialWeb") !== false;
+    const enableWebSearch = Zotero.Prefs.get("arxiv_marker_ccf2026.enableWebSearch") !== false;
+    const enableDuckDuckGo = Zotero.Prefs.get("arxiv_marker_ccf2026.enableDuckDuckGo") !== false;
+    const exhaustive = runOptions.deep || !!Zotero.Prefs.get("arxiv_marker_ccf2026.exhaustiveSources");
+    resolutions = await ZMResolver.resolveItems(items, {
+      request: zoteroRequest,
+      cache: httpCache,
+      forceRefresh: !!runOptions.forceRefresh,
+      token: Zotero.ArxivMarkerCCF2026.activeJob,
+      itemConcurrency: Math.max(1, Math.min(6, Number(Zotero.Prefs.get("arxiv_marker_ccf2026.itemConcurrency")) || 3)),
+      itemTimeoutMs: exhaustive ? 90000 : 45000,
+      requestTimeoutMs: 8000,
+      onStats: (stats) => { runStats = stats; },
+      onProgress: (result, state) => {
+        line.setText(`${state.done}/${state.total} · ${result.canonical || (ZH ? "未确认" : "unconfirmed")} · ${result.title.slice(0, 70)}`);
+      },
+      s2ApiKey: s2ApiKey || null,
+      openCitationsToken: openCitationsToken || null,
+      openAlexApiKey: openAlexApiKey || null,
+      braveSearchApiKey: braveSearchApiKey || null,
+      enableOfficialWeb,
+      enableWebSearch,
+      enableDuckDuckGo,
+      exhaustive,
+      debug: (message) => Zotero.debug(`arxiv_marker_ccf2026: ${message}`),
+      sleep: (ms) => new Promise((r) => window.setTimeout(r, ms)),
+    });
+  } catch (e) {
+    Zotero.debug("arxiv_marker_ccf2026 resolve error: " + e + "\n" + (e && e.stack));
+    line.setText(T.failed);
+    line.setError();
+    pw.startCloseTimer(6000);
+    return;
+  }
+  await saveHTTPCache(httpCache);
+  try {
+    await Zotero.File.putContentsAsync(PathUtils.join(Zotero.DataDirectory.dir, "arxiv_marker_ccf2026-last-run.json"),
+      JSON.stringify({ version: Zotero.ArxivMarkerCCF2026.version || "1.0.0", timestamp: new Date().toISOString(), stats: runStats,
+        items: resolutions.map((r) => ({ key: r.item_key, title: r.title, venue: r.canonical, year: r.year,
+          sources: r.sources, evidence: r.evidence, diagnostics: r.diagnostics })) }, null, 2));
+  } catch (_) { Zotero.debug("arxiv_marker_ccf2026: could not save diagnostic report"); }
+  Zotero.debug("arxiv_marker_ccf2026: run statistics " + JSON.stringify(runStats));
+  pw.close();
+
+  const minConfidence = parseFloat(Zotero.Prefs.get("arxiv_marker_ccf2026.minConfidence") || "0.8");
+
+  // review dialog (modal): user confirms which items to write
+  const io = { resolutions, minConfidence, zh: ZH, accepted: false, selectedKeys: [] };
+  window.openDialog(
+    "chrome://arxivmarkerccf2026/content/review.xhtml",
+    "arxiv-marker-ccf2026-review",
+    "chrome,dialog,centerscreen,resizable,modal",
+    io
+  );
+  if (!io.accepted) return;
+
+  const chosen = new Set(io.selectedKeys);
+  const byKey = new Map(resolutions.map((r) => [r.item_key, r]));
+  const toWrite = [...chosen]
+    .map((k) => ({ key: k, res: byKey.get(k), item: itemByKey.get(k) }))
+    .filter((x) => x.res && x.item && x.res.target_item_type);
+
+  // snapshot BEFORE writing so this run can be undone
+  await saveUndoSnapshot(toWrite.map((x) => x.item));
+
+  let wrote = 0;
+  for (const { key, res, item } of toWrite) {
+    try {
+      if (await applyResolution(item, res)) wrote++;
+    } catch (e) {
+      Zotero.debug(`arxiv_marker_ccf2026: write failed for ${key}: ${e}`);
+    }
+  }
+
+  try {
+    Zotero.ItemTreeManager?.refreshColumns();
+  } catch (e) {
+    Zotero.debug("arxiv_marker_ccf2026: post-write column refresh failed: " + e);
+  }
+
+  const done = new Zotero.ProgressWindow();
+  done.changeHeadline("arxiv_marker_ccf2026");
+  new done.ItemProgress(null, wrote ? T.wroteN(wrote) : T.wroteNone);
+  done.show();
+  done.startCloseTimer(4000);
+}
+
+function notify(text) {
+  const pw = new Zotero.ProgressWindow();
+  pw.changeHeadline("arxiv_marker_ccf2026");
+  new pw.ItemProgress(null, text);
+  pw.show();
+  pw.startCloseTimer(4000);
+}
+
+// ----- menu wiring ------------------------------------------------------------------
+const MENU_IDS = [
+  "arxiv-marker-ccf2026-itemmenu",
+  "arxiv-marker-ccf2026-collectionmenu",
+  "arxiv-marker-ccf2026-toolsmenu",
+  "arxiv-marker-ccf2026-undomenu",
+  "arxiv-marker-ccf2026-cancelmenu",
+  "arxiv-marker-ccf2026-deepmenu",
+  "arxiv-marker-ccf2026-clearcache",
+];
+
+function addToMenu(window, menuID, newID, label, handler) {
+  const doc = window.document;
+  const menupopup = doc.getElementById(menuID);
+  if (!menupopup) return;
+  if (doc.getElementById(newID)) return; // already added
+  const mi = doc.createXULElement("menuitem");
+  mi.id = newID;
+  mi.setAttribute("label", label);
+  mi.addEventListener("command", handler);
+  menupopup.appendChild(mi);
+}
+
+function removeFromMenu(window) {
+  const doc = window.document;
+  for (const id of MENU_IDS) {
+    const el = doc.getElementById(id);
+    if (el) el.remove();
+  }
+}
+
+// ----- native Zotero columns: Venue + local CCF 2026 badge ---------------------------
+function unregisterColumns() {
+  if (!Zotero.ItemTreeManager) return;
+  const keys = (Zotero.ArxivMarkerCCF2026 && Zotero.ArxivMarkerCCF2026.columnKeys) || [];
+  for (const key of keys) {
+    try {
+      Zotero.ItemTreeManager.unregisterColumn(key);
+    } catch (e) {
+      Zotero.debug(`arxiv_marker_ccf2026: could not unregister column ${key}: ${e}`);
+    }
+  }
+  if (Zotero.ArxivMarkerCCF2026) Zotero.ArxivMarkerCCF2026.columnKeys = [];
+}
+
+function registerColumns() {
+  if (!Zotero.ItemTreeManager || typeof ZMCCF === "undefined") return;
+  const pluginID = Zotero.ArxivMarkerCCF2026.id || "arxiv_marker_ccf2026@local";
+
+  // Remove stale registrations left by a development reload before adding this build's
+  // columns. The ItemTreeManager namespaces dataKey by pluginID.
+  try {
+    const existing = Zotero.ItemTreeManager.getCustomColumns(null, { pluginID }) || [];
+    for (const column of existing) Zotero.ItemTreeManager.unregisterColumn(column.dataKey);
+  } catch (e) {
+    Zotero.debug("arxiv_marker_ccf2026: stale column cleanup failed: " + e);
+  }
+
+  const venueKey = Zotero.ItemTreeManager.registerColumn({
+    dataKey: "venue",
+    label: ZH ? "会议/期刊" : "Venue",
+    pluginID,
+    enabledTreeIDs: ["main"],
+    showInColumnPicker: true,
+    columnPickerSubMenu: false,
+    flex: 0,
+    width: "105",
+    minWidth: 60,
+    zoteroPersist: ["width", "hidden", "sortDirection"],
+    dataProvider: (item) => {
+      if (!item || !item.isRegularItem || !item.isRegularItem()) return "";
+      return ZMCCF.venueLabel(itemColumnData(item));
+    },
+  });
+
+  const ccfKey = Zotero.ItemTreeManager.registerColumn({
+    dataKey: "ccf2026",
+    label: "CCF 2026",
+    pluginID,
+    enabledTreeIDs: ["main"],
+    showInColumnPicker: true,
+    columnPickerSubMenu: false,
+    flex: 0,
+    width: "82",
+    minWidth: 58,
+    zoteroPersist: ["width", "hidden", "sortDirection"],
+    dataProvider: (item) => {
+      if (!item || !item.isRegularItem || !item.isRegularItem()) return "";
+      return ZMCCF.columnData(itemColumnData(item));
+    },
+    renderCell: (index, data, column, isFirstColumn, doc) => {
+      const cell = doc.createElement("span");
+      cell.className = `cell ${column.className || ""}`;
+      cell.style.display = "flex";
+      cell.style.alignItems = "center";
+      cell.style.height = "100%";
+      if (!data) return cell;
+
+      const info = ZMCCF.parseColumnData(data);
+      if (!info) return cell;
+      const badge = doc.createElement("span");
+      badge.textContent = `CCF ${info.tier}`;
+      badge.style.display = "inline-block";
+      badge.style.padding = "1px 7px";
+      badge.style.borderRadius = "4px";
+      badge.style.fontWeight = "600";
+      badge.style.lineHeight = "1.45";
+      badge.style.whiteSpace = "nowrap";
+      badge.style.color = "#FFFFFF";
+      badge.style.backgroundColor = ZMCCF.colors[info.tier] || "#777777";
+      badge.title = [
+        `CCF 2026 ${info.tier}`,
+        info.canonical,
+        info.full_name && info.full_name !== info.canonical ? info.full_name : "",
+        info.domain,
+      ].filter(Boolean).join(" · ");
+      cell.appendChild(badge);
+      return cell;
+    },
+  });
+
+  Zotero.ArxivMarkerCCF2026.columnKeys = [venueKey, ccfKey].filter(Boolean);
+  try {
+    Zotero.ItemTreeManager.refreshColumns();
+  } catch (e) {
+    Zotero.debug("arxiv_marker_ccf2026: column refresh failed: " + e);
+  }
+}
+
+// ----- preferences pane wiring (manual, no auto-binding magic) -----------------------
+function onPrefsLoad({ window }) {
+  const doc = window.document;
+  const setText = (id, v) => {
+    const el = doc.getElementById(id);
+    if (el) el.textContent = v;
+  };
+  const setAttr = (id, a, v) => {
+    const el = doc.getElementById(id);
+    if (el) el.setAttribute(a, v);
+  };
+  // English is the xhtml default; localize to Chinese on zh locales (before values are set,
+  // so the menulist shows the localized label for the current selection).
+  if (ZH) {
+    setText("zm-s2desc", "Semantic Scholar API key(可选)——留空即用免费公共端点。只有大批量解析撞到限流时才需要填。");
+    setAttr("zm-s2label", "value", "S2 API key:");
+    setAttr("zm-pref-s2key", "placeholder", "(留空 = 公共端点)");
+    setText("zm-ocdesc", "OpenCitations Meta 用作 DOI 元数据补充来源。Token 可选；OpenCitations 官方建议应用或批量使用 REST API 时填写。");
+    setAttr("zm-oclabel", "value", "OpenCitations token:");
+    setAttr("zm-pref-octoken", "placeholder", "(留空 = 公共端点)");
+    setText("zm-oadesc", "OpenAlex 集成为可选项。OpenAlex 自 2026-02 起要求免费 API key 才能正常使用；留空将跳过 OpenAlex，其他来源不受影响。");
+    setAttr("zm-oalabel", "value", "OpenAlex key:");
+    setAttr("zm-pref-oakey", "placeholder", "(可在 openalex.org/settings/api 免费获取)");
+    setText("zm-officialdesc", "正式会议网站往往比 DBLP、Semantic Scholar 更早公布录用论文和技术日程。本插件会查询 AAAI、USENIX 等正式页面，并严格核验标题和作者。");
+    setAttr("zm-official-label", "value", "查询会议官网/正式项目页面");
+    setText("zm-webdesc", "最终兜底时，可把论文精确标题发送给 Brave Search 和/或 DuckDuckGo HTML/Lite；只有在抓取目标网页并核验标题、作者、会议和录用措辞后才会提出写入。Brave key 可选。");
+    setAttr("zm-bravelabel", "value", "Brave Search key:");
+    setAttr("zm-pref-bravekey", "placeholder", "(可选；DuckDuckGo 无需 key)");
+    setAttr("zm-websearch-label", "value", "启用精确标题的全网兜底搜索");
+    setAttr("zm-duckduckgo-label", "value", "使用无需 key 的 DuckDuckGo HTML/Lite");
+    setAttr("zm-exhaustive-label", "value", "深度模式：继续查询后续来源（每篇 90 秒预算）");
+    setText("zm-confdesc", "审核台里,置信达到此值的条目默认勾选;低于此值的仍会列出,但留给你决定。");
+    setAttr("zm-conflabel", "value", "自动勾选 ≥");
+    setAttr("zm-c06", "label", "0.60(含未识别的 venue 字符串)");
+    setAttr("zm-c08", "label", "0.80(推荐)");
+    setAttr("zm-c085", "label", "0.85(单一可信来源)");
+    setAttr("zm-c095", "label", "0.95(两个来源一致)");
+  }
+
+  const key = doc.getElementById("zm-pref-s2key");
+  if (key) {
+    key.value = Zotero.Prefs.get("arxiv_marker_ccf2026.s2ApiKey") || "";
+    key.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.s2ApiKey", key.value.trim()));
+  }
+  const ocToken = doc.getElementById("zm-pref-octoken");
+  if (ocToken) {
+    ocToken.value = Zotero.Prefs.get("arxiv_marker_ccf2026.openCitationsToken") || "";
+    ocToken.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.openCitationsToken", ocToken.value.trim()));
+  }
+  const oaKey = doc.getElementById("zm-pref-oakey");
+  if (oaKey) {
+    oaKey.value = Zotero.Prefs.get("arxiv_marker_ccf2026.openAlexApiKey") || "";
+    oaKey.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.openAlexApiKey", oaKey.value.trim()));
+  }
+  const braveKey = doc.getElementById("zm-pref-bravekey");
+  if (braveKey) {
+    braveKey.value = Zotero.Prefs.get("arxiv_marker_ccf2026.braveSearchApiKey") || "";
+    braveKey.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.braveSearchApiKey", braveKey.value.trim()));
+  }
+  const concurrency = doc.getElementById("zm-pref-concurrency");
+  if (concurrency) {
+    concurrency.value = String(Zotero.Prefs.get("arxiv_marker_ccf2026.itemConcurrency") || 3);
+    concurrency.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.itemConcurrency", String(Math.max(1, Math.min(6, Number(concurrency.value) || 3)))));
+  }
+  const bindBool = (id, pref, fallback = true) => {
+    const element = doc.getElementById(id);
+    if (!element) return;
+    const stored = Zotero.Prefs.get(pref);
+    element.checked = stored === undefined || stored === null ? fallback : !!stored;
+    element.addEventListener("change", () => Zotero.Prefs.set(pref, !!element.checked));
+    element.addEventListener("command", () => Zotero.Prefs.set(pref, !!element.checked));
+  };
+  bindBool("zm-pref-officialweb", "arxiv_marker_ccf2026.enableOfficialWeb", true);
+  bindBool("zm-pref-websearch", "arxiv_marker_ccf2026.enableWebSearch", true);
+  bindBool("zm-pref-duckduckgo", "arxiv_marker_ccf2026.enableDuckDuckGo", true);
+
+  const exhaustive = doc.getElementById("zm-pref-exhaustive");
+  if (exhaustive) {
+    exhaustive.checked = !!Zotero.Prefs.get("arxiv_marker_ccf2026.exhaustiveSources");
+    exhaustive.addEventListener("change", () => Zotero.Prefs.set("arxiv_marker_ccf2026.exhaustiveSources", !!exhaustive.checked));
+    exhaustive.addEventListener("command", () => Zotero.Prefs.set("arxiv_marker_ccf2026.exhaustiveSources", !!exhaustive.checked));
+  }
+  const conf = doc.getElementById("zm-pref-minconf");
+  if (conf) {
+    conf.value = String(Zotero.Prefs.get("arxiv_marker_ccf2026.minConfidence") || "0.8");
+    conf.addEventListener("command", () => Zotero.Prefs.set("arxiv_marker_ccf2026.minConfidence", String(conf.value)));
+  }
+}
+
+// ----- lifecycle hooks --------------------------------------------------------------
+Zotero.ArxivMarkerCCF2026 = {
+  rootURI: null,
+  activeJob: null,
+  cancelResolution, clearHTTPCache,
+  columnKeys: [],
+  run,
+  hooks: {
+    async onStartup() {
+      registerColumns();
+      try {
+        await Zotero.PreferencePanes.register({
+          pluginID: "arxiv_marker_ccf2026@local",
+          src: Zotero.ArxivMarkerCCF2026.rootURI + "content/preferences.xhtml",
+          label: T.prefLabel,
+        });
+      } catch (e) {
+        Zotero.debug("arxiv_marker_ccf2026: prefpane register failed: " + e);
+      }
+      // wire menus into any already-open main windows
+      const wins = Zotero.getMainWindows ? Zotero.getMainWindows() : [Zotero.getMainWindow && Zotero.getMainWindow()];
+      for (const w of wins) if (w) Zotero.ArxivMarkerCCF2026.hooks.onMainWindowLoad(w);
+    },
+    onMainWindowLoad(window) {
+      // right-click selected items -> resolve just those
+      addToMenu(window, "zotero-itemmenu", "arxiv-marker-ccf2026-itemmenu", T.menu, () => run(window, "selected"));
+      // right-click a collection on the left -> resolve everything in it (no item selection needed)
+      addToMenu(window, "zotero-collectionmenu", "arxiv-marker-ccf2026-collectionmenu", T.collMenu, () => run(window, "collection"));
+      // Tools menu -> auto: selected items if any, else the current collection
+      addToMenu(window, "menu_ToolsPopup", "arxiv-marker-ccf2026-toolsmenu", T.menu, () => run(window, "auto"));
+      addToMenu(window, "menu_ToolsPopup", "arxiv-marker-ccf2026-undomenu", T.undoMenu, () => undoLast(window));
+      addToMenu(window, "menu_ToolsPopup", "arxiv-marker-ccf2026-deepmenu", ZH ? "深度重新检索所选条目（跳过查询缓存）" : "Deep recheck selected items (bypass cache)", () => run(window, "selected", { deep: true, forceRefresh: true }));
+      addToMenu(window, "menu_ToolsPopup", "arxiv-marker-ccf2026-cancelmenu", ZH ? "停止 arxiv_marker_ccf2026 当前解析" : "Stop arxiv_marker_ccf2026 lookup", cancelResolution);
+      addToMenu(window, "menu_ToolsPopup", "arxiv-marker-ccf2026-clearcache", ZH ? "清空 arxiv_marker_ccf2026 查询缓存" : "Clear arxiv_marker_ccf2026 lookup cache", clearHTTPCache);
+    },
+    onMainWindowUnload(window) {
+      removeFromMenu(window);
+    },
+    onShutdown() {
+      cancelResolution();
+      unregisterColumns();
+      const wins = Zotero.getMainWindows ? Zotero.getMainWindows() : [Zotero.getMainWindow && Zotero.getMainWindow()];
+      for (const w of wins) if (w) removeFromMenu(w);
+      delete Zotero.ArxivMarkerCCF2026;
+    },
+    onPrefsLoad,
+  },
+};

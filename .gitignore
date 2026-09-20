@@ -1,0 +1,62 @@
+# Build and release artifacts
+build/
+dist/
+*.xpi
+*.zip
+
+# Dependencies and caches
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+coverage/
+.coverage
+htmlcov/
+
+# Tests and test output are intentionally local-only
+test/
+tests/
+**/test/
+**/tests/
+*.test.js
+*.test.mjs
+*.spec.js
+*.spec.mjs
+test_*.py
+*_test.py
+
+# Developer documentation is intentionally local-only
+doc/
+docs/
+documentation/
+**/doc/
+**/docs/
+BLUEPRINT.md
+
+# Local configuration, logs and temporary files
+.env
+.env.*
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+out/
+tmp/
+temp/
+
+# IDE and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Codex/session scratch
+_repo.json

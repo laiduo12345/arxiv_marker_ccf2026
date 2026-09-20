@@ -1,0 +1,98 @@
+{
+  "*|conference|SIGKDD": [
+    "KDD",
+    "ACM SIGKDD Conference on Knowledge Discovery and Data Mining",
+    "Knowledge Discovery and Data Mining"
+  ],
+  "*|conference|S&P": [
+    "IEEE S&P",
+    "IEEE Symposium on Security and Privacy",
+    "IEEE Security and Privacy",
+    "Oakland"
+  ],
+  "*|conference|ACM SIGOPS ATC": [
+    "ATC",
+    "USENIX ATC",
+    "ACM SIGOPS Annual Technical Conference"
+  ],
+  "*|conference|SIG-METRICS": [
+    "SIGMETRICS",
+    "ACM SIGMETRICS",
+    "International Conference on Measurement and Modeling of Computer Systems"
+  ],
+  "*|conference|INTER-SPEECH": [
+    "INTERSPEECH",
+    "Conference of the International Speech Communication Association"
+  ],
+  "*|conference|ISS": [
+    "ITS",
+    "ACM ISS",
+    "ACM International Conference on Interactive Surfaces and Spaces",
+    "ACM International Conference on Interactive Tabletops and Surfaces"
+  ],
+  "*|journal|PACM PL": [
+    "PACMPL",
+    "Proceedings of the ACM on Programming Languages"
+  ],
+  "*|journal|Proc. IEEE": [
+    "Proceedings of the IEEE"
+  ],
+  "*|journal|TON": [
+    "IEEE/ACM Transactions on Networking",
+    "IEEE-ACM Transactions on Networking",
+    "IEEE Transactions on Networking"
+  ],
+  "*|journal|EITEE": [
+    "FITEE",
+    "Frontiers of Information Technology & Electronic Engineering",
+    "Frontiers of Information Technology and Electronic Engineering"
+  ],
+  "*|conference|CASAXR": [
+    "CASA",
+    "International Conference on Computer Animation and Social Agents"
+  ],
+  "*|journal|Discover Computing": [
+    "IR",
+    "Information Retrieval",
+    "Information Retrieval Journal"
+  ],
+  "网络与信息安全|conference|FSE": [
+    "Fast Software Encryption",
+    "FSE Crypto"
+  ],
+  "软件工程/系统软件/程序设计语言|conference|FSE": [
+    "ACM SIGSOFT FSE",
+    "ESEC/FSE",
+    "FSE/ESEC",
+    "Foundations of Software Engineering",
+    "ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering"
+  ],
+  "计算机网络|journal|CC": [
+    "Computer Communications"
+  ],
+  "计算机科学理论|journal|CC": [
+    "Computational Complexity"
+  ],
+  "*|conference|AAAI": [
+    "AAAI Conference on Artificial Intelligence"
+  ],
+  "*|conference|NeurIPS": [
+    "Conference on Neural Information Processing Systems"
+  ],
+  "*|conference|CVPR": [
+    "IEEE/CVF Computer Vision and Pattern Recognition Conference"
+  ],
+  "*|conference|USENIX Security": [
+    "USENIX Security Symposium"
+  ],
+  "*|conference|WWW": [
+    "International World Wide Web Conference",
+    "The Web Conference"
+  ],
+  "*|conference|SIGMOD": [
+    "ACM SIGMOD Conference"
+  ],
+  "*|conference|VLDB": [
+    "International Conference on Very Large Data Bases"
+  ]
+}

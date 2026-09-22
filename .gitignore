@@ -29,6 +29,7 @@ tests/
 *.spec.mjs
 test_*.py
 *_test.py
+tools/test-zotero-compat.mjs
 
 # Developer documentation is intentionally local-only
 doc/

@@ -10,7 +10,7 @@ if (typeof Zotero === "undefined") {
 const ZH = (Zotero.locale || "").toLowerCase().startsWith("zh");
 const T = {
   menu: ZH ? "用 arxiv_marker_ccf2026 解析会议/期刊" : "Resolve venue with arxiv_marker_ccf2026",
-  collMenu: ZH ? "用 arxiv_marker_ccf2026 解析此分类" : "Resolve this collection with arxiv_marker_ccf2026",
+  collMenu: ZH ? "用 arxiv_marker_ccf2026 解析所选分类" : "Resolve selected collection(s) with arxiv_marker_ccf2026",
   noItems: ZH
     ? "没找到可处理的条目。选中条目、或右键左侧的某个分类。"
     : "No items to process. Select items, or right-click a collection.",
@@ -208,15 +208,46 @@ async function undoLast(window) {
 //   "auto"       -> selected items if any, else the current collection's items
 // So you can right-click a collection (or just hit the Tools menu with a collection open)
 // without hand-picking each paper.
+function selectedCollections(pane) {
+  // Zotero 10 removed the singular getter because the collections tree now supports
+  // multi-selection. Keep the fallback so the same build continues to work in Zotero 9.
+  if (typeof pane.getSelectedCollections === "function") {
+    return pane.getSelectedCollections() || [];
+  }
+  if (typeof pane.getSelectedCollection === "function") {
+    const collection = pane.getSelectedCollection();
+    return collection ? [collection] : [];
+  }
+  return [];
+}
+
+function uniqueRegularItems(items) {
+  const seen = new Set();
+  return items.filter((item) => {
+    if (!item || !item.isRegularItem || !item.isRegularItem()) return false;
+    const identity = `${item.libraryID}:${item.key || item.id}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+function runtimeItemKey(item) {
+  // Item keys are unique only within a library. Zotero 10 can show items from multiple
+  // selected libraries/collections at once, so use an opaque cross-library key internally.
+  return `${item.libraryID}:${item.key}`;
+}
+
 function getScopeItems(pane, scope) {
   if (!pane) return [];
-  const isRegular = (it) => it.isRegularItem && it.isRegularItem();
   const collItems = () => {
-    const c = pane.getSelectedCollection && pane.getSelectedCollection();
-    return c ? c.getChildItems(false, false).filter(isRegular) : [];
+    const items = selectedCollections(pane).flatMap((collection) =>
+      Array.from(collection.getChildItems(false, false) || [])
+    );
+    return uniqueRegularItems(items);
   };
   if (scope === "collection") return collItems();
-  const sel = pane.getSelectedItems().filter(isRegular);
+  const sel = uniqueRegularItems(Array.from(pane.getSelectedItems() || []));
   if (sel.length || scope === "selected") return sel;
   return collItems(); // "auto" fallback
 }
@@ -236,8 +267,8 @@ async function runInner(window, scope = "auto", runOptions = {}) {
     return;
   }
 
-  const items = selected.map((it) => ({ key: it.key, version: it.version, data: itemToData(it) }));
-  const itemByKey = new Map(selected.map((it) => [it.key, it]));
+  const items = selected.map((it) => ({ key: runtimeItemKey(it), version: it.version, data: itemToData(it) }));
+  const itemByKey = new Map(selected.map((it) => [runtimeItemKey(it), it]));
 
   const pw = new Zotero.ProgressWindow({ closeOnClick: false });
   pw.changeHeadline("arxiv_marker_ccf2026");
@@ -289,9 +320,13 @@ async function runInner(window, scope = "auto", runOptions = {}) {
   await saveHTTPCache(httpCache);
   try {
     await Zotero.File.putContentsAsync(PathUtils.join(Zotero.DataDirectory.dir, "arxiv_marker_ccf2026-last-run.json"),
-      JSON.stringify({ version: Zotero.ArxivMarkerCCF2026.version || "1.0.0", timestamp: new Date().toISOString(), stats: runStats,
-        items: resolutions.map((r) => ({ key: r.item_key, title: r.title, venue: r.canonical, year: r.year,
-          sources: r.sources, evidence: r.evidence, diagnostics: r.diagnostics })) }, null, 2));
+      JSON.stringify({ version: Zotero.ArxivMarkerCCF2026.version || "1.0.1", timestamp: new Date().toISOString(), stats: runStats,
+        items: resolutions.map((r) => {
+          const sourceItem = itemByKey.get(r.item_key);
+          return { libraryID: sourceItem?.libraryID ?? null, key: sourceItem?.key || r.item_key,
+            title: r.title, venue: r.canonical, year: r.year,
+            sources: r.sources, evidence: r.evidence, diagnostics: r.diagnostics };
+        }) }, null, 2));
   } catch (_) { Zotero.debug("arxiv_marker_ccf2026: could not save diagnostic report"); }
   Zotero.debug("arxiv_marker_ccf2026: run statistics " + JSON.stringify(runStats));
   pw.close();

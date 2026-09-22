@@ -1,4 +1,4 @@
-arxiv_marker_ccf2026 — Zotero 9 plugin
+arxiv_marker_ccf2026 — Zotero 9 and 10 plugin
 
 Derived from the arxiv-marker project and substantially refactored as an independent plugin.
 

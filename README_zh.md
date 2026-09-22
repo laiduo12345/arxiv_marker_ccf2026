@@ -2,10 +2,10 @@
 
 # arxiv_marker_ccf2026
 
-**在 Zotero 9 中把 arXiv 预印本解析为经过核验的正式发表记录，并离线显示 CCF 2026 等级。**
+**在 Zotero 9/10 中把 arXiv 预印本解析为经过核验的正式发表记录，并离线显示 CCF 2026 等级。**
 
-[![版本](https://img.shields.io/badge/version-1.0.0-2563eb?style=flat-square)](manifest.json)
-[![Zotero](https://img.shields.io/badge/Zotero-9-cc2936?style=flat-square)](https://www.zotero.org/)
+[![版本](https://img.shields.io/badge/version-1.0.1-2563eb?style=flat-square)](manifest.json)
+[![Zotero](https://img.shields.io/badge/Zotero-9%20%7C%2010-cc2936?style=flat-square)](https://www.zotero.org/)
 [![CCF](https://img.shields.io/badge/CCF-2026-f59e0b?style=flat-square)](data/CCF_2026_SOURCE.md)
 [![目录](https://img.shields.io/badge/catalogue-681%20venues-7c3aed?style=flat-square)](data/ccf_2026_quick.md)
 [![许可证](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](LICENSE)
@@ -15,7 +15,7 @@
 
 </div>
 
-`arxiv_marker_ccf2026` 是基于原版 `arxiv-marker` 思路重构的独立 Zotero 9 插件。它会查找
+`arxiv_marker_ccf2026` 是基于原版 `arxiv-marker` 思路重构的独立 Zotero 9/10 插件。它会查找
 arXiv 预印本的正式会议或期刊版本，核验证据，在写入前展示所有拟修改内容，并在 Zotero
 文献列表中提供本地 Venue 与 CCF 2026 列。
 
@@ -58,7 +58,7 @@ arXiv 预印本的正式会议或期刊版本，核验证据，在写入前展�
 
 ## 相比原版 arxiv-marker 的变化
 
-- 仓库收敛为单一的 Zotero 9 原生插件，删除旧 Python CLI、本地 Web UI、重复发布报告和双重版本体系。
+- 仓库收敛为单一的 Zotero 9/10 原生插件，删除旧 Python CLI、本地 Web UI、重复发布报告和双重版本体系。
 - 用分阶段、有界的单条目并发解析替代全局批次屏障和大量串行兜底。
 - 修复浏览器 JSON XHR 读取问题，避免成功响应因访问无效的 `responseText` 而被丢弃。
 - 新增或增强 arXiv 网页兜底、AAAI OJS、DOI CSL 内容协商、Crossref 关联 DOI、官网元数据和经过核验的 Web 搜索。
@@ -80,12 +80,12 @@ py -3 .\tools\build-xpi.py
 输出文件：
 
 ```text
-build/arxiv_marker_ccf2026-1.0.0.xpi
+build/arxiv_marker_ccf2026-1.0.1.xpi
 ```
 
 ### 安装到 Zotero
 
-1. 在 Zotero 9 中打开“工具 → 插件”。
+1. 在 Zotero 9 或 10 中打开“工具 → 插件”。
 2. 选择“从文件安装插件”。
 3. 选择生成的 XPI。
 4. 完整退出并重新启动 Zotero。

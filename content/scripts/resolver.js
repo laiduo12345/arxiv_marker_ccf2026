@@ -1753,7 +1753,7 @@ function makeCrossref(request, sleep) {
         const res = await request("GET", url, {
           headers: {
             Accept: "application/json",
-            "User-Agent": "arxiv_marker_ccf2026/1.0.0",
+            "User-Agent": "arxiv_marker_ccf2026/1.0.1",
           },
         });
         const transient = res.status === 0 || res.status === 408 || res.status === 425 ||
@@ -1913,7 +1913,7 @@ function makeDataCite(request, sleep) {
         const res = await request("GET", url, {
           headers: {
             Accept: "application/vnd.api+json, application/json",
-            "User-Agent": "arxiv_marker_ccf2026/1.0.0",
+            "User-Agent": "arxiv_marker_ccf2026/1.0.1",
           },
         });
         const transient = res.status === 0 || res.status === 408 || res.status === 425 ||

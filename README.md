@@ -2,10 +2,10 @@
 
 # arxiv_marker_ccf2026
 
-**Resolve arXiv preprints to verified publications in Zotero 9 — with offline CCF 2026 rankings.**
+**Resolve arXiv preprints to verified publications in Zotero 9/10 — with offline CCF 2026 rankings.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-2563eb?style=flat-square)](manifest.json)
-[![Zotero](https://img.shields.io/badge/Zotero-9-cc2936?style=flat-square)](https://www.zotero.org/)
+[![Version](https://img.shields.io/badge/version-1.0.1-2563eb?style=flat-square)](manifest.json)
+[![Zotero](https://img.shields.io/badge/Zotero-9%20%7C%2010-cc2936?style=flat-square)](https://www.zotero.org/)
 [![CCF](https://img.shields.io/badge/CCF-2026-f59e0b?style=flat-square)](data/CCF_2026_SOURCE.md)
 [![Catalogue](https://img.shields.io/badge/catalogue-681%20venues-7c3aed?style=flat-square)](data/ccf_2026_quick.md)
 [![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](LICENSE)
@@ -15,7 +15,7 @@
 
 </div>
 
-`arxiv_marker_ccf2026` is an independent Zotero 9 plugin derived from the original
+`arxiv_marker_ccf2026` is an independent Zotero 9/10 plugin derived from the original
 `arxiv-marker` concept. It discovers the formal conference or journal version of an arXiv
 preprint, verifies the evidence, lets you review every proposed change, and displays local
 Venue and CCF 2026 columns in the Zotero item list.
@@ -62,7 +62,7 @@ pass title, author, and venue checks before the plugin proposes a write.
 
 ## What changed from the original arxiv-marker
 
-- Rebuilt the repository as a single native Zotero 9 plugin; the legacy Python CLI, local Web
+- Rebuilt the repository as a single native Zotero 9/10 plugin; the legacy Python CLI, local Web
   UI, duplicate release reports, and split versioning were removed.
 - Replaced the global batch barrier and mostly serial fallback chain with staged, bounded
   per-item discovery.
@@ -92,12 +92,12 @@ py -3 .\tools\build-xpi.py
 The output is:
 
 ```text
-build/arxiv_marker_ccf2026-1.0.0.xpi
+build/arxiv_marker_ccf2026-1.0.1.xpi
 ```
 
 ### Install in Zotero
 
-1. Open **Tools → Plugins** in Zotero 9.
+1. Open **Tools → Plugins** in Zotero 9 or 10.
 2. Choose **Install Plugin From File**.
 3. Select the generated XPI.
 4. Fully quit and restart Zotero.

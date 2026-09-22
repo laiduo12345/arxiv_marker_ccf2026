@@ -1,5 +1,5 @@
 /**
- * arxiv_marker_ccf2026 bootstrap for Zotero 9.
+ * arxiv_marker_ccf2026 bootstrap for Zotero 9 and 10.
  *
  * Runtime scripts share one classic-script scope. Load order is intentional:
  * generated data -> CCF matcher -> resolver -> network/discovery/pipeline -> Zotero UI.

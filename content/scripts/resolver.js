@@ -839,7 +839,7 @@ const _WEB_SKIP_HOSTS = new Set([
   "openalex.org", "api.openalex.org", "opencitations.net", "api.opencitations.net",
 ]);
 const _OFFICIAL_PUBLISHER_HOSTS = [
-  "proceedings.mlr.press", "proceedings.ijcai.org", "www.ijcai.org", "drops.dagstuhl.de",
+  "proceedings.mlr.press", "proceedings.mlsys.org", "proceedings.ijcai.org", "www.ijcai.org", "drops.dagstuhl.de",
   "usenix.org", "ndss-symposium.org", "openaccess.thecvf.com", "cv-foundation.org",
   "aclanthology.org", "aclweb.org", "proceedings.mlr.press", "jmlr.org",
   "proceedings.neurips.cc", "dl.acm.org", "acm.org", "ieeexplore.ieee.org",
@@ -983,12 +983,14 @@ function _findCcfVenueInText(text, kindHint = "conference") {
   if (!norm) return null;
   const rawTokens = raw.match(/[A-Za-z0-9&+.-]+/g) || [];
   const exactUpper = new Set(rawTokens.filter((t) => t === t.toUpperCase()).map((t) => t.replace(/[^A-Za-z0-9]/g, "")));
-  const exactTokens = new Set(rawTokens.map((t) => t.replace(/[^A-Za-z0-9]/g, "").toLowerCase()).filter(Boolean));
+  const exactTokens = new Set(rawTokens.map((t) => t.replace(/[^A-Za-z0-9]/g, "")).filter(Boolean));
+  const foldedTokens = new Set([...exactTokens].map((t) => t.toLowerCase()));
   const matches = [];
   for (const row of ZMCCFResolver.data) {
     if (kindHint && row.kind !== kindHint) continue;
     const aliases = [row.full_name, row.canonical, ...(row.aliases || [])].filter(Boolean);
     let best = 0;
+    let matchQuality = null;
     for (const alias of aliases) {
       const aliasNorm = ZMCCFResolver.norm ? ZMCCFResolver.norm(alias) : normTitle(alias);
       if (!aliasNorm) continue;
@@ -996,21 +998,27 @@ function _findCcfVenueInText(text, kindHint = "conference") {
       const compact = String(alias).replace(/[^A-Za-z0-9]/g, "");
       const phrasePresent = (` ${norm} `).includes(` ${aliasNorm} `);
       const distinctiveTwoToken = tokens.length === 2 && aliasNorm.length >= 10 && /[A-Z]{3,}/.test(String(alias));
+      const mixedBrand = /[A-Z].*[A-Z]/.test(String(alias)) && /[a-z]/.test(String(alias));
       if (phrasePresent && ((tokens.length >= 3 && aliasNorm.length >= 12) || distinctiveTwoToken)) {
-        best = Math.max(best, alias === row.full_name ? 12 : alias === row.canonical ? 11 : 9);
-      } else if (compact.length >= 4 && compact.length <= 24 && exactUpper.has(compact.toUpperCase())) {
-        best = Math.max(best, alias === row.canonical ? 8 : 6);
+        const score = alias === row.full_name ? 12 : alias === row.canonical ? 11 : 9;
+        if (score > best) { best = score; matchQuality = "phrase"; }
+      } else if (!mixedBrand && compact.length >= 4 && compact.length <= 24 && exactUpper.has(compact.toUpperCase())) {
+        const score = alias === row.canonical ? 8 : 6;
+        if (score > best) { best = score; matchQuality = "exact_case"; }
       } else {
-        // Mixed-case brands such as NeurIPS, EuroSys, CoNEXT, RecSys, and MobileHCI
-        // are not all-uppercase acronyms. Accept an exact token only when its casing shape
-        // is distinctive; ordinary words such as Performance or Networking remain ignored.
-        const mixedBrand = /[A-Z].*[A-Z]/.test(String(alias)) && /[a-z]/.test(String(alias));
-        if (mixedBrand && compact.length >= 5 && exactTokens.has(compact.toLowerCase())) {
-          best = Math.max(best, alias === row.canonical ? 8 : 6);
+        // Mixed-case venue names can appear with altered capitalization. Keep those
+        // matches, but distinguish them from an exact-cased name: ordinary words such
+        // as "models" must not carry the same evidence weight as "MoDELS".
+        if (mixedBrand && compact.length >= 5) {
+          const exactCase = exactTokens.has(compact);
+          const foldedCase = foldedTokens.has(compact.toLowerCase());
+          const score = exactCase ? (alias === row.canonical ? 8 : 6)
+            : foldedCase ? (alias === row.canonical ? 3 : 2) : 0;
+          if (score > best) { best = score; matchQuality = exactCase ? "exact_case" : "case_insensitive"; }
         }
       }
     }
-    if (best) matches.push({ score: best, row });
+    if (best) matches.push({ score: best, row, matchQuality });
   }
   matches.sort((a, b) => b.score - a.score || String(a.row.canonical).localeCompare(String(b.row.canonical)));
   if (!matches.length) return null;
@@ -1042,6 +1050,7 @@ function _findCcfVenueInText(text, kindHint = "conference") {
       kind: top.row.kind || "conference",
       entries: [top.row],
     },
+    text_match_quality: top.matchQuality,
   };
 }
 
@@ -1082,7 +1091,6 @@ function _pageVenueCandidates(html) {
       "citation_conference_title", "citation_journal_title", "citation_book_title",
       "dc.source", "dcterms.ispartof", "prism.publicationname",
     ]),
-    ..._htmlMetaValues(html, ["og:description", "twitter:description", "description"]),
   ].filter(Boolean);
 }
 
@@ -1133,7 +1141,9 @@ function _pageToVenueHit({ url, html, title, authorLastname = "", resultTitle = 
     rawVenue = candidate;
     if (candidateRow.ccf_tier) break;
   }
-  if (!row) {
+  // A page with an explicit but unknown venue must not be reclassified using words
+  // from its abstract. Body text is only a weak fallback when no venue field exists.
+  if (!row && !venueCandidates.length) {
     row = _findCcfVenueInText(`${resultTitle} ${snippet} ${context}`, "conference");
     rawVenue = row && row.canonical;
   }
@@ -1159,6 +1169,8 @@ function _pageToVenueHit({ url, html, title, authorLastname = "", resultTitle = 
     venue_candidates: venueCandidates,
     year,
     venue_type: row.kind,
+    venue_evidence: venueCandidates.length ? "structured" : "page_text",
+    venue_match_quality: row.text_match_quality || null,
     citation_count: null,
     influential_citations: null,
     external_doi: doi && !isArxivDoi(doi) ? _stripDoiUrl(doi) : null,
@@ -1437,6 +1449,7 @@ function makeWebSearch(request, options = {}, sleep) {
     return {
       source: `${result.provider}_snippet`, title, authors: [], title_score: score,
       venue_raw: row.canonical, venue_candidates: [row.canonical],
+      venue_evidence: "snippet", venue_match_quality: row.text_match_quality || null,
       year: _yearFromText(combined) || yearHint || null, venue_type: row.kind,
       citation_count: null, influential_citations: null, external_doi: null, dblp_key: null,
       evidence_url: result.url, issn: null, abbrev: row.canonical, publisher: row.publisher || null,
@@ -2299,6 +2312,9 @@ function _individualHitScore(hit, row) {
   }
   if (Number.isFinite(hit.title_score)) score += Math.max(0, Math.min(3, hit.title_score * 3));
   if (hit.external_doi && !isArxivDoi(hit.external_doi)) score += 1;
+  if (hit.venue_evidence === "page_text") score -= 30;
+  if (hit.venue_evidence === "snippet") score -= 20;
+  if (hit.venue_match_quality === "case_insensitive") score -= 10;
   return score;
 }
 
@@ -2348,14 +2364,18 @@ function chooseVenue(hits) {
 
 function confidence(hits, chosen, row) {
   if (!chosen) return 0.0;
-  if (/snippet$/.test(chosen.source || "")) return 0.65;
+  if (/snippet$/.test(chosen.source || "")) return chosen.venue_match_quality === "case_insensitive" ? 0.55 : 0.65;
   if (!row) return 0.6;
   const canonical = row.canonical;
   const agreeing = (hits || []).filter((hit) => {
+    if (hit.venue_evidence === "page_text" || hit.venue_evidence === "snippet") return false;
     const r = _hitRow(hit);
     return r && r.canonical === canonical && (!row.kind || r.kind === row.kind);
   });
   const sources = new Set(agreeing.map((h) => sourceFamily(h.source)));
+  if (chosen.venue_evidence === "page_text") {
+    return chosen.venue_match_quality === "case_insensitive" ? 0.55 : 0.70;
+  }
   if (sources.size >= 3) return 0.99;
   if (sources.size >= 2) return 0.95;
   if (["usenix_official", "official_web", "doi_csl", "crossref_doi", "datacite_doi", "opencitations_doi", "arxiv_journal_ref", "openreview", "dblp"].includes(chosen.source)) {

@@ -31,6 +31,13 @@ var ZM_RANKINGS = [
     "write_as": ""
   },
   {
+    "canonical": "MLSys",
+    "kind": "conference",
+    "core_tier": "",
+    "aliases": "mlsys|machine learning and systems|proceedings of machine learning and systems",
+    "write_as": "Proceedings of Machine Learning and Systems"
+  },
+  {
     "canonical": "CVPR",
     "kind": "conference",
     "core_tier": "A*",

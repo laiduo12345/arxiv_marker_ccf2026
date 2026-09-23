@@ -3,6 +3,7 @@ NeurIPS,conference,A*,neurips|nips|neural information processing systems|advance
 ICML,conference,A*,icml|international conference on machine learning
 ICLR,conference,A*,iclr|international conference on learning representations
 COLM,conference,,colm|conference on language modeling
+MLSys,conference,,mlsys|machine learning and systems|proceedings of machine learning and systems,Proceedings of Machine Learning and Systems
 CVPR,conference,A*,cvpr|computer vision and pattern recognition|ieee/cvf conference on computer vision and pattern recognition
 ICCV,conference,A*,iccv|international conference on computer vision,International Conference on Computer Vision
 ECCV,conference,A*,eccv|european conference on computer vision

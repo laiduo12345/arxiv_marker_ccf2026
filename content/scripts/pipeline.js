@@ -91,7 +91,7 @@ var ZMFastPipeline = (() => {
         for (const hit of meta.hits || []) add(hit);
       }
       function strong() {
-        return hits.some((h) => h.venue_raw && h.year && !R.isNonvenue(h.venue_raw) &&
+        return hits.some((h) => h.venue_raw && h.year && h.venue_evidence !== 'page_text' && !R.isNonvenue(h.venue_raw) &&
           ['crossref_doi', 'crossref_title', 'doi_csl', 'dblp', 'openreview', 'official_web', 'usenix_official', 'arxiv_journal_ref'].includes(h.source) &&
           R._hitRow(h) && (h.title_score === undefined || h.title_score === null || h.title_score >= 0.94));
       }
